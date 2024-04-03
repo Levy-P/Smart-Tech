@@ -35,34 +35,35 @@ bool row5[8] = {0,0,0,0,1,0,0,0};
 bool row6[8] = {0,0,0,0,0,0,0,0};
 bool row7[8] = {0,0,0,0,0,0,0,0};
 bool row8[8] = {0,0,0,0,0,0,0,0};
-
 bool * screen[] = {row1, row2, row3, row4, row5, row6, row7, row8};
 
-void fillScreenArray();
-
-
-int tick = 0;
-int delta = 50;
+// Global variables
 DoubleLinkedList<Pos> snake;
-
 int snakeLength = 2;
+Pos apple({4,0});
+
 Pos moveVector({0,-1});
 Pos lastMove(moveVector);
-Pos apple({4,0});
-bool appleEaten = false;
 
+bool appleEaten = false;
 bool gameOver = false;
+
+int tick = 0;
+int appleBlinkingTick = 0;
+int delta = 999;
+
+
+
 
 void initializeSnake() {
   snake.append({4,4});
   snake.append({4,3});
   screen[apple.y][apple.x] = true;
+  updateDelta();
 }
 
-void delayV2(int delay, int j){
-  unsigned long startMicros = micros();
-  unsigned long currentMicros = micros();
 
+void updateButtons() {
   int buttonUpRight = analogRead(A4);
   int buttonDownLeft = analogRead(A5);
 
@@ -77,46 +78,44 @@ void delayV2(int delay, int j){
   } else if (buttonDownLeft > 900) {
     if (lastMove.x != 1) moveVector = {-1,0};
   }
-
-
-  if (tick == 0) {
-    if (gameOver && j == 0) {
-      invert();
-    } else {
-      switch (j) {
-        case 0:
-          moveSnake();
-          lastMove.x = moveVector.x;
-          lastMove.y = moveVector.y;
-          break;
-
-        case 1:
-          checkCollision();
-          break;
-
-        case 2:
-          if (!gameOver) checkApple();
-          break;
-
-        case 3:
-          break;
-
-        case 6:
-          if (!gameOver) fillScreenArray();
-          break;
-        case 7:
-          if (!gameOver) appleEaten = false;
-          break;
-      }
-    }
-  }
-  
-  while (currentMicros - startMicros < delay) {
-    currentMicros = micros();
-  }
 }
 
 
+
+
+void updateGame(int subTick) {
+  //long start = micros();
+  switch (subTick) {
+    case 0:{
+      moveSnake();
+      break;
+    }
+    case 1: {
+      checkCollision();
+      break;
+    }
+    case 2: {
+      checkApple();
+      break;
+    }
+    case 6: {
+      fillScreenArray();
+      break;
+    }
+    case 7: {
+      appleEaten = false;
+      break;
+    }
+  }
+  //Serial.println(micros() - start);
+}
+
+
+
+
+void updateDelta() {
+  delta = 200 - ((snakeLength / 5) * 10);
+}
 
 
 void fillScreenArray() {
@@ -153,7 +152,7 @@ void checkCollision() {
 
   gameOver = true;
   moveVector = {0, 0};
-  delta = 40;
+  delta = 300;
 }
 
 void moveSnake() {
@@ -168,6 +167,8 @@ void moveSnake() {
   if (y >= 8) y = 0;
 
   snake.append({x,y});
+  lastMove.x = moveVector.x;
+  lastMove.y = moveVector.y;
 }
 
 void checkApple() {
@@ -198,7 +199,7 @@ void checkApple() {
     screen[apple.y][apple.x] = true;
 
 
-    delta = 50 - snakeLength/2;
+    updateDelta();
   }
 }
 
@@ -209,34 +210,22 @@ void checkApple() {
 void setup() {
   for (int i = 2; i <= 17; i++) {
     pinMode(i, OUTPUT);
-    digitalWrite(i, HIGH);
   }
-
   Serial.begin(9600);
-
-  int rows[] = {ROW1, ROW2, ROW3, ROW4, ROW5, ROW6, ROW7, ROW8};
-  int cols[] = {COL1, COL2, COL3, COL4, COL5, COL6, COL7, COL8};
-
   initializeSnake();
 }
 
 
-void display() {
-  for (int j = 0; j <= 7; j++){
-    for (int i = 0; i <= 7; i++) {
-      digitalWrite(rows[i], LOW);
-    }
-
-    for (int i = 0; i <=7; i++) {
-      digitalWrite(cols[i], !screen[j][i]);
-    }
-    
-    digitalWrite(rows[j], HIGH);
-
-    delayV2(1500, j);
+void updateMatrixRow(int row) {
+  for (int i = 0; i <= 7; i++) {
+    digitalWrite(rows[i], LOW);
   }
-  tick++;
-  if (tick >= delta) tick = 0;
+
+  for (int i = 0; i <= 7; i++) {
+    digitalWrite(cols[i], !screen[row][i]);
+  }
+
+  digitalWrite(rows[row], HIGH);
 }
 
 void invert() {
@@ -247,6 +236,35 @@ void invert() {
   }
 }
 
+unsigned long startMicros = micros();
 void loop() {
-  display();
+  for (int i = 0; i < 8; i++) {
+    updateMatrixRow(i);
+
+    updateButtons();
+    if (tick == 0) {
+      if (!gameOver) updateGame(i);
+      else if (i == 0) {
+        invert();
+      }
+    }
+
+    while (micros() - startMicros < 250) {
+      updateButtons();
+    }
+    startMicros += 250;
+  }
+  tick++;
+  appleBlinkingTick++;
+
+
+  // Apple blinking
+  if (tick >= delta) {
+    screen[apple.y][apple.x] = true;
+    tick = 0;
+  }
+  if (appleBlinkingTick >= 150) {
+    screen[apple.y][apple.x] = !screen[apple.y][apple.x];
+    appleBlinkingTick = 0;
+  }
 }
